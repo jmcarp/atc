@@ -31,6 +31,8 @@ type SchedulerDB interface {
 	CreateJobBuild(job string) (db.Build, error)
 	EnsurePendingBuildExists(jobName string) error
 	AcquireResourceCheckingForJobLock(logger lager.Logger, job string) (db.Lock, bool, error)
+	GetAllPendingBuilds() (map[string][]db.Build, error)
+	GetPendingBuildsForJob(jobName string) ([]db.Build, error)
 }
 
 //go:generate counterfeiter . Scanner
@@ -45,30 +47,69 @@ func (s *Scheduler) Schedule(
 	jobConfigs atc.JobConfigs,
 	resourceConfigs atc.ResourceConfigs,
 	resourceTypes atc.ResourceTypes,
-) error {
+) (map[string]time.Duration, error) {
+	jobSchedulingTime := map[string]time.Duration{}
+
 	for _, jobConfig := range jobConfigs {
-		inputMapping, err := s.InputMapper.SaveNextInputMapping(logger, versions, jobConfig)
+		jStart := time.Now()
+		err := s.ensurePendingBuildExists(logger, versions, jobConfig)
+		jobSchedulingTime[jobConfig.Name] = time.Since(jStart)
+
 		if err != nil {
-			return err
-		}
-
-		for _, inputConfig := range config.JobInputs(jobConfig) {
-			inputVersion, ok := inputMapping[inputConfig.Name]
-
-			//trigger: true, and the version has not been used
-			if ok && inputVersion.FirstOccurrence && inputConfig.Trigger {
-				err := s.DB.EnsurePendingBuildExists(jobConfig.Name)
-				if err != nil {
-					logger.Error("failed-to-ensure-pending-build-exists", err)
-					return err
-				}
-
-				break
-			}
+			return jobSchedulingTime, err
 		}
 	}
 
-	return s.BuildStarter.TryStartAllPendingBuilds(logger, jobConfigs, resourceConfigs, resourceTypes)
+	nextPendingBuilds, err := s.DB.GetAllPendingBuilds()
+	if err != nil {
+		logger.Error("failed-to-get-all-next-pending-builds", err)
+		return jobSchedulingTime, err
+	}
+
+	for _, jobConfig := range jobConfigs {
+		jStart := time.Now()
+		nextPendingBuildsForJob, ok := nextPendingBuilds[jobConfig.Name]
+		if !ok {
+			continue
+		}
+
+		err := s.BuildStarter.TryStartPendingBuildsForJob(logger, jobConfig, resourceConfigs, resourceTypes, nextPendingBuildsForJob)
+		jobSchedulingTime[jobConfig.Name] = jobSchedulingTime[jobConfig.Name] + time.Since(jStart)
+
+		if err != nil {
+			return jobSchedulingTime, err
+		}
+	}
+
+	return jobSchedulingTime, nil
+}
+
+func (s *Scheduler) ensurePendingBuildExists(
+	logger lager.Logger,
+	versions *algorithm.VersionsDB,
+	jobConfig atc.JobConfig,
+) error {
+	inputMapping, err := s.InputMapper.SaveNextInputMapping(logger, versions, jobConfig)
+	if err != nil {
+		return err
+	}
+
+	for _, inputConfig := range config.JobInputs(jobConfig) {
+		inputVersion, ok := inputMapping[inputConfig.Name]
+
+		//trigger: true, and the version has not been used
+		if ok && inputVersion.FirstOccurrence && inputConfig.Trigger {
+			err := s.DB.EnsurePendingBuildExists(jobConfig.Name)
+			if err != nil {
+				logger.Error("failed-to-ensure-pending-build-exists", err)
+				return err
+			}
+
+			break
+		}
+	}
+
+	return nil
 }
 
 type Waiter interface {
@@ -137,7 +178,17 @@ func (s *Scheduler) TriggerImmediately(
 			lock.Release()
 		}
 
-		err = s.BuildStarter.TryStartPendingBuildsForJob(logger, jobConfig, resourceConfigs, resourceTypes)
+		nextPendingBuilds, err := s.DB.GetPendingBuildsForJob(jobConfig.Name)
+		if err != nil {
+			logger.Error("failed-to-get-next-pending-build-for-job", err)
+			return
+		}
+
+		err = s.BuildStarter.TryStartPendingBuildsForJob(logger, jobConfig, resourceConfigs, resourceTypes, nextPendingBuilds)
+		if err != nil {
+			logger.Error("failed-to-start-next-pending-build-for-job", err, lager.Data{"job-name": jobConfig.Name})
+			return
+		}
 	}()
 
 	return build, wg, nil

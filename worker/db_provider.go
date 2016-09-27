@@ -9,9 +9,9 @@ import (
 	"code.cloudfoundry.org/lager"
 	"github.com/concourse/baggageclaim"
 	bclient "github.com/concourse/baggageclaim/client"
+	"github.com/concourse/retryhttp"
 
 	"github.com/concourse/atc/db"
-	"github.com/concourse/atc/worker/transport"
 )
 
 //go:generate counterfeiter . WorkerDB
@@ -34,29 +34,29 @@ type WorkerDB interface {
 }
 
 type dbProvider struct {
-	logger            lager.Logger
-	db                WorkerDB
-	dialer            gconn.DialerFunc
-	retryPolicy       transport.RetryPolicy
-	imageFactory      ImageFactory
-	pipelineDBFactory db.PipelineDBFactory
+	logger              lager.Logger
+	db                  WorkerDB
+	dialer              gconn.DialerFunc
+	retryBackOffFactory retryhttp.BackOffFactory
+	imageFactory        ImageFactory
+	pipelineDBFactory   db.PipelineDBFactory
 }
 
 func NewDBWorkerProvider(
 	logger lager.Logger,
 	db WorkerDB,
 	dialer gconn.DialerFunc,
-	retryPolicy transport.RetryPolicy,
+	retryBackOffFactory retryhttp.BackOffFactory,
 	imageFactory ImageFactory,
 	pipelineDBFactory db.PipelineDBFactory,
 ) WorkerProvider {
 	return &dbProvider{
-		logger:            logger,
-		db:                db,
-		dialer:            dialer,
-		retryPolicy:       retryPolicy,
-		imageFactory:      imageFactory,
-		pipelineDBFactory: pipelineDBFactory,
+		logger:              logger,
+		db:                  db,
+		dialer:              dialer,
+		retryBackOffFactory: retryBackOffFactory,
+		imageFactory:        imageFactory,
+		pipelineDBFactory:   pipelineDBFactory,
 	}
 }
 
@@ -112,7 +112,7 @@ func (provider *dbProvider) newGardenWorker(tikTok clock.Clock, savedWorker db.S
 		provider.logger.Session("garden-connection"),
 		savedWorker.Name,
 		savedWorker.GardenAddr,
-		provider.retryPolicy,
+		provider.retryBackOffFactory,
 	)
 
 	connection := NewRetryableConnection(gcf.BuildConnection())

@@ -4,15 +4,24 @@ html, body, #elm-app, .content-frame {
   height: 100%;
 }
 
-.content-frame {
-  display: flex;
-  flex-direction: column;
+@top-bar-height: 40px;
+@fixed-header-height: 60px;
+@builds-list-height: 30px;
+@sidebar-width: 300px;
 
+@user-menu-z-index: 100;
+@fixed-header-z-index: @user-menu-z-index - 1;
+
+.content-frame {
   .top-bar {
+    z-index: @user-menu-z-index;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
     display: flex;
     flex-direction: row;
-    height: 40px;
-    flex-shrink: 0;
+    height: @top-bar-height;
 
     .groups {
       flex-grow: 1;
@@ -22,10 +31,8 @@ html, body, #elm-app, .content-frame {
 
     .nav-right {
       flex-shrink: 1;
-      z-index: 100;
 
       .user-info {
-        z-index: 100;
         text-align: right;
         cursor: pointer;
         -webkit-user-select: none;
@@ -51,38 +58,42 @@ html, body, #elm-app, .content-frame {
   }
 
   .bottom {
-    flex-grow: 1;
+    padding-top: @top-bar-height;
+    height: 100%;
+    box-sizing: border-box;
     display: flex;
     flex-direction: row;
     align-items: stretch;
   }
 }
 
-#top-bar-app {
-  // TODO: remove once this intermediary app element isn't there
-  flex-shrink: 0;
-}
-
 .with-fixed-header {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  height: 100%;
-
   .fixed-header {
-    flex: 0 0 auto;
+    height: @fixed-header-height;
+    position: fixed;
+    top: @top-bar-height;
+    left: 0;
+    right: 0;
+    z-index: @fixed-header-z-index;
+    background: @base01;
   }
 
   .scrollable-body {
-    overflow-y: auto;
-    flex: 1 1 auto;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
     padding: 10px;
+    padding-top: @fixed-header-height + 10px;
+    position: absolute;
+
+    &.build-body {
+      padding-top: @fixed-header-height + @builds-list-height + 10px;
+    }
   }
 }
 
 #content { // TODO: kill id
   flex-grow: 1;
-  overflow: auto;
 
   // for absolutely positioned content in pipeline graph
   position: relative;
@@ -131,6 +142,14 @@ nav .groups li a {
   width: 150px;
 }
 
+#builds {
+  overflow-x: hidden;
+}
+
+.step-body {
+  position: relative;
+}
+
 pre {
   white-space: pre-wrap;
   overflow-wrap: break-word;
@@ -151,4 +170,139 @@ pre {
 .metadata-field {
   margin-top: 0;
   margin-bottom: 0.3em;
+}
+
+.sidebar {
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: @base00;
+
+  position: fixed;
+  top: @top-bar-height;
+  left: 0;
+  bottom: 0;
+
+  width: @sidebar-width;
+  flex-shrink: 0;
+
+  display: none;
+  color: @base04;
+
+  &.visible {
+    display: block;
+  }
+
+  ul {
+    list-style: none;
+    margin: 0px;
+  }
+
+  .team {
+    text-align: center;
+
+    .team-header {
+      line-height: 28px;
+    }
+
+    ul {
+      background-color: @base01;
+      border-bottom: 1px solid @base02;
+      border-top: 1px solid @base02;
+    }
+
+    &:last-child ul {
+      border-bottom: 0;
+    }
+
+    li {
+      line-height: 12px;
+
+      position: relative;
+      border-bottom: 1px solid @base02;
+
+      &:first-of-type {
+        border-top: 1px solid @base02;
+      }
+
+      .drop-area {
+        position: absolute;
+        height: 100%;
+        width: 100%;
+        top: 50%;
+        background: transparent;
+        z-index: 2;
+
+        &.first {
+          background: transparent;
+          top: -50%;
+        }
+      }
+
+      .draggable {
+        position: relative;
+
+        div {
+          background: @base00;
+          display: flex;
+
+          span {
+            flex-grow: 0;
+          }
+
+          i {
+            padding: 8px 0;
+          }
+
+          a {
+            padding: 8px 0;
+
+            flex-grow: 1;
+            text-align: right;
+            padding-right: 10px;
+
+            &:hover {
+              background-color: @base01;
+            }
+          }
+        }
+
+        &.dragging {
+          z-index: 1;
+          // height: 0;
+
+          &.purposeful {
+            opacity: 0.7;
+
+            a {
+              background-color: @base01;
+            }
+          }
+        }
+      }
+
+      &.space-after {
+        border-bottom: 3px solid @base0A;
+
+        a, i {
+          padding-bottom: 8px - 2px !important;
+        }
+      }
+
+      &.space-before {
+        border-top: 3px solid @base0A;
+
+        a, i {
+          padding-top: 8px - 2px !important;
+        }
+      }
+    }
+  }
+}
+
+.sidebar.visible + #content {
+  margin-left: @sidebar-width;
+}
+
+.sidebar.visible + #content .fixed-header {
+  left: @sidebar-width;
 }

@@ -53,7 +53,7 @@ func (candidates InputCandidates) String() string {
 	return fmt.Sprintf("[%s]", strings.Join(lens, "; "))
 }
 
-func (candidates InputCandidates) Reduce(jobs JobSet) (ResolvedInputs, bool) {
+func (candidates InputCandidates) Reduce(depth int, jobs JobSet) (ResolvedInputs, bool) {
 	newInputCandidates := candidates.pruneToCommonBuilds(jobs)
 
 	for i, inputVersionCandidates := range newInputCandidates {
@@ -69,15 +69,20 @@ func (candidates InputCandidates) Reduce(jobs JobSet) (ResolvedInputs, bool) {
 
 		versionIDs := inputVersionCandidates.VersionIDs()
 
+		iteration := 0
+
 		for {
 			id, ok := versionIDs.Next()
 			if !ok {
-				break
+				// exhaused available versions
+				return nil, false
 			}
+
+			iteration++
 
 			newInputCandidates.Pin(i, id)
 
-			mapping, ok := newInputCandidates.Reduce(jobs)
+			mapping, ok := newInputCandidates.Reduce(depth+1, jobs)
 			if ok && inputVersionCandidates.IsNext(id, versionIDs) {
 				return mapping, true
 			}

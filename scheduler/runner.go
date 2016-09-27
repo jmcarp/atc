@@ -21,7 +21,7 @@ type BuildScheduler interface {
 		jobConfigs atc.JobConfigs,
 		resourceConfigs atc.ResourceConfigs,
 		resourceTypes atc.ResourceTypes,
-	) error
+	) (map[string]time.Duration, error)
 	TriggerImmediately(
 		logger lager.Logger,
 		jobConfig atc.JobConfig,
@@ -124,16 +124,17 @@ func (runner *Runner) tick(logger lager.Logger) error {
 
 	config := runner.DB.Config()
 
-	jStart := time.Now()
-
 	sLog := logger.Session("scheduling")
 
-	runner.Scheduler.Schedule(sLog, versions, config.Jobs, config.Resources, config.ResourceTypes)
+	schedulingTimes, err := runner.Scheduler.Schedule(sLog, versions, config.Jobs, config.Resources, config.ResourceTypes)
 
-	metric.SchedulingJobDuration{
-		PipelineName: runner.DB.GetPipelineName(),
-		Duration:     time.Since(jStart),
-	}.Emit(sLog)
+	for jobName, duration := range schedulingTimes {
+		metric.SchedulingJobDuration{
+			PipelineName: runner.DB.GetPipelineName(),
+			JobName:      jobName,
+			Duration:     duration,
+		}.Emit(sLog)
+	}
 
-	return nil
+	return err
 }
