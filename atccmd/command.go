@@ -165,7 +165,8 @@ func (cmd *ATCCommand) Runner(args []string) (ifrit.Runner, error) {
 	resourceFetcherFactory := resource.NewFetcherFactory(sqlDB, clock.NewClock())
 	pipelineDBFactory := db.NewPipelineDBFactory(dbConn, bus, lockFactory)
 	dbVolumeFactory := dbng.NewVolumeFactory(dbngConn)
-	workerClient := cmd.constructWorkerPool(logger, sqlDB, trackerFactory, resourceFetcherFactory, pipelineDBFactory, dbVolumeFactory)
+	dbContainerFactory := dbng.NewContainerFactory(dbngConn)
+	workerClient := cmd.constructWorkerPool(logger, sqlDB, trackerFactory, resourceFetcherFactory, pipelineDBFactory, dbContainerFactory, dbVolumeFactory)
 
 	tracker := trackerFactory.TrackerFor(workerClient)
 	resourceFetcher := resourceFetcherFactory.FetcherFor(workerClient)
@@ -629,6 +630,7 @@ func (cmd *ATCCommand) constructWorkerPool(
 	trackerFactory resource.TrackerFactory,
 	resourceFetcherFactory resource.FetcherFactory,
 	pipelineDBFactory db.PipelineDBFactory,
+	dbContainerFactory *dbng.ContainerFactory,
 	dbVolumeFactory *dbng.VolumeFactory,
 ) worker.Client {
 	return worker.NewPool(
@@ -638,6 +640,7 @@ func (cmd *ATCCommand) constructWorkerPool(
 			keepaliveDialer,
 			retryhttp.NewExponentialBackOffFactory(5*time.Minute),
 			image.NewFactory(trackerFactory, resourceFetcherFactory),
+			dbContainerFactory,
 			dbVolumeFactory,
 			pipelineDBFactory,
 		),
