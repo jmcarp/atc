@@ -166,6 +166,8 @@ func (cmd *ATCCommand) Runner(args []string) (ifrit.Runner, error) {
 	pipelineDBFactory := db.NewPipelineDBFactory(dbConn, bus, lockFactory)
 	dbVolumeFactory := dbng.NewVolumeFactory(dbngConn)
 	dbContainerFactory := dbng.NewContainerFactory(dbngConn)
+	dbTeamFactory := dbng.NewTeamFactory(dbngConn)
+	dbWorkerFactory := dbng.NewWorkerFactory(dbngConn)
 	workerClient := cmd.constructWorkerPool(logger, sqlDB, trackerFactory, resourceFetcherFactory, pipelineDBFactory, dbContainerFactory, dbVolumeFactory)
 
 	tracker := trackerFactory.TrackerFor(workerClient)
@@ -217,6 +219,8 @@ func (cmd *ATCCommand) Runner(args []string) (ifrit.Runner, error) {
 		reconfigurableSink,
 		sqlDB,
 		teamDBFactory,
+		dbTeamFactory,
+		dbWorkerFactory,
 		providerFactory,
 		signingKey,
 		pipelineDBFactory,
@@ -811,6 +815,8 @@ func (cmd *ATCCommand) constructAPIHandler(
 	reconfigurableSink *lager.ReconfigurableSink,
 	sqlDB *db.SQLDB,
 	teamDBFactory db.TeamDBFactory,
+	dbTeamFactory dbng.TeamFactory,
+	dbWorkerFactory dbng.WorkerFactory,
 	providerFactory provider.OAuthFactory,
 	signingKey *rsa.PrivateKey,
 	pipelineDBFactory db.PipelineDBFactory,
@@ -859,6 +865,8 @@ func (cmd *ATCCommand) constructAPIHandler(
 
 		pipelineDBFactory,
 		teamDBFactory,
+		dbTeamFactory,
+		dbWorkerFactory,
 
 		sqlDB, // teamserver.TeamDB
 		sqlDB, // workerserver.WorkerDB
