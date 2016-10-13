@@ -8,6 +8,8 @@ import TopBar
 import SideBar
 import Routes
 import SubPage
+import LoginRedirect
+import Navigation exposing (newUrl)
 
 type alias Flags =
   { turbulenceImgSrc : String
@@ -30,6 +32,7 @@ type Msg
   = SubMsg NavIndex SubPage.Msg
   | TopMsg NavIndex TopBar.Msg
   | SideMsg NavIndex SideBar.Msg
+  | LoginRedirect String
 
 init : Flags -> Routes.ConcourseRoute -> (Model, Cmd (Msg))
 init flags route =
@@ -64,6 +67,8 @@ init flags route =
 update : Msg -> Model -> (Model, Cmd (Msg))
 update msg model =
   case msg of
+    LoginRedirect url ->
+      (model, Navigation.newUrl url)
     TopMsg _ TopBar.ToggleSidebar ->
       ( { model
         | sidebarVisible = not model.sidebarVisible
@@ -213,6 +218,7 @@ subscriptions model =
     [ Sub.map (TopMsg model.navIndex) <| TopBar.subscriptions model.topModel
     , Sub.map (SideMsg model.navIndex) <| SideBar.subscriptions model.sideModel
     , Sub.map (SubMsg model.navIndex) <| SubPage.subscriptions model.subModel
+    , LoginRedirect.loginRedirect LoginRedirect
     ]
 
 

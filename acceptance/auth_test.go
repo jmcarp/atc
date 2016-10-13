@@ -2,7 +2,9 @@ package acceptance_test
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/lib/pq"
@@ -23,6 +25,9 @@ var _ = Describe("Auth", func() {
 	var atcCommand *ATCCommand
 	var dbListener *pq.Listener
 	var teamDB db.TeamDB
+	var pipelineDBFactory db.PipelineDBFactory
+	var teamName = atc.DefaultTeamName
+	var pipelineName = atc.DefaultPipelineName
 
 	BeforeEach(func() {
 		postgresRunner.Truncate()
@@ -36,16 +41,22 @@ var _ = Describe("Auth", func() {
 
 		lockFactory := db.NewLockFactory(retryableConn)
 		sqlDB = db.NewSQL(dbConn, bus, lockFactory)
+		pipelineDBFactory = db.NewPipelineDBFactory(dbConn, bus, lockFactory)
 
-		err := sqlDB.DeleteTeamByName(atc.DefaultPipelineName)
+		err := sqlDB.DeleteTeamByName(pipelineName)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = sqlDB.CreateTeam(db.Team{Name: atc.DefaultTeamName})
+		_, err = sqlDB.CreateTeam(db.Team{Name: teamName})
 		Expect(err).NotTo(HaveOccurred())
 
 		teamDBFactory := db.NewTeamDBFactory(dbConn, bus, lockFactory)
-		teamDB = teamDBFactory.GetTeamDB(atc.DefaultTeamName)
+		teamDB = teamDBFactory.GetTeamDB(teamName)
 
-		_, _, err = teamDB.SaveConfig(atc.DefaultPipelineName, atc.Config{}, db.ConfigVersion(1), db.PipelineUnpaused)
+		_, _, err = teamDB.SaveConfig(pipelineName, atc.Config{
+			Jobs: atc.JobConfigs{
+				{Name: "job-name"},
+			},
+		}, db.ConfigVersion(1), db.PipelineUnpaused)
+
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -57,27 +68,6 @@ var _ = Describe("Auth", func() {
 	})
 
 	Describe("GitHub Auth", func() {
-		Context("in a browser", func() {
-			var page *agouti.Page
-
-			BeforeEach(func() {
-				var err error
-				page, err = agoutiDriver.NewPage()
-				Expect(err).NotTo(HaveOccurred())
-			})
-
-			AfterEach(func() {
-				Expect(page.Destroy()).To(Succeed())
-			})
-
-			It("forces a redirect to /teams/main/login", func() {
-				atcCommand = NewATCCommand(atcBin, 1, postgresRunner.DataSourceName(), []string{}, GITHUB_AUTH)
-				err := atcCommand.Start()
-				Expect(err).NotTo(HaveOccurred())
-				Expect(page.Navigate(atcCommand.URL("/teams/main/pipelines/main"))).To(Succeed())
-				Eventually(page).Should(HaveURL(atcCommand.URL("/teams/main/login")))
-			})
-		})
 
 		It("requires client id and client secret to be specified", func() {
 			atcCommand = NewATCCommand(atcBin, 1, postgresRunner.DataSourceName(), []string{}, GITHUB_AUTH_NO_CLIENT_SECRET)
@@ -131,6 +121,72 @@ var _ = Describe("Auth", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Eventually(session).Should(gexec.Exit(1))
 			Expect(session.Err).To(gbytes.Say("must specify --basic-auth-username to use basic auth"))
+		})
+
+		Context("properly configured", func() {
+			BeforeEach(func() {
+				atcCommand = NewATCCommand(atcBin, 1, postgresRunner.DataSourceName(), []string{}, BASIC_AUTH)
+				_, err := atcCommand.StartAndWait()
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			Context("when user is not logged in", func() {
+				var page *agouti.Page
+
+				BeforeEach(func() {
+					var err error
+					page, err = agoutiDriver.NewPage()
+					Expect(err).NotTo(HaveOccurred())
+				})
+
+				AfterEach(func() {
+					Expect(page.Destroy()).To(Succeed())
+				})
+
+				Context("navigating to a team specific page", func() {
+					BeforeEach(func() {
+						Expect(page.Navigate(atcCommand.URL("/teams/main/pipelines/main"))).To(Succeed())
+					})
+
+					It("forces a redirect to /teams/main/login with a redirect query param", func() {
+						Eventually(page).Should(HaveURL(atcCommand.URL(fmt.Sprintf("/teams/main/login?redirect=%s", url.QueryEscape("teams/main/pipelines/main")))))
+					})
+				})
+
+				Context("when a build exists for an authenticated team", func() {
+					var buildPath string
+
+					BeforeEach(func() {
+						// job build data
+						savedPipeline, found, err := teamDB.GetPipelineByName(pipelineName)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(found).To(BeTrue())
+
+						pipelineDB := pipelineDBFactory.Build(savedPipeline)
+						build, err := pipelineDB.CreateJobBuild("job-name")
+						Expect(err).NotTo(HaveOccurred())
+						buildPath = fmt.Sprintf("/builds/%d", build.ID())
+					})
+
+					Context("navigating to a team specific page that exists", func() {
+						BeforeEach(func() {
+							Expect(page.Navigate(atcCommand.URL(buildPath))).To(Succeed())
+						})
+
+						It("forces a redirect to /login", func() {
+							Eventually(page).Should(HaveURL(atcCommand.URL(fmt.Sprintf("/login?redirect=%s", url.QueryEscape(buildPath[1:])))))
+						})
+
+						It("redirects back to the build page when user logs in", func() {
+							Eventually(page.FindByLink(teamName)).Should(BeFound())
+							Expect(page.FindByLink(teamName).Click()).To(Succeed())
+							FillLoginFormAndSubmit(page)
+							Eventually(page).Should(HaveURL(atcCommand.URL(buildPath)))
+						})
+
+					})
+				})
+			})
 		})
 	})
 
