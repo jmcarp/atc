@@ -9,7 +9,7 @@ import (
 )
 
 type templateData struct {
-	csrfToken string
+	CSRFToken string
 }
 
 type handler struct {

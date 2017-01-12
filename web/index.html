@@ -5,7 +5,6 @@
     <link href="{{asset "main.css"}}" media="all" rel="stylesheet" type="text/css" />
     <link id="favicon" rel="icon" type="image/png" href="{{asset "images/favicon.png"}}" />
     <meta name="theme-color" content="#000000" />
-    <meta name="gorilla.csrf.Token" content="{{.csrfToken}}" />
     <script src="{{asset "index.js"}}"></script>
     <script src="{{asset "d3.v355.min.js"}}"></script>
     <script src="{{asset "graph.js"}}"></script>
@@ -20,9 +19,16 @@
       var node = document.getElementById("elm-app-embed");
       var csrf = document.querySelector('meta[name="gorilla.csrf.Token"]');
       var app = Elm.Main.embed(node, {
-        turbulenceImgSrc: {{asset "images/buckleup.svg"}},
-        csrfToken: csrf ? csrf.content : ''
+        turbulenceImgSrc: {{asset "images/buckleup.svg"}}
       });
+
+      (function() {
+        var send = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.send = function(data) {
+          this.setRequestHeader('X-CSRF-Token', {{.CSRFToken}});
+          return send.apply(this, arguments);
+        };
+      }());
 
       app.ports.renderPipeline.subscribe(function (values) {
         setTimeout(function(){ // elm 0.17 bug, see https://github.com/elm-lang/core/issues/595
