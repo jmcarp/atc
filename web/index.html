@@ -5,6 +5,7 @@
     <link href="{{asset "main.css"}}" media="all" rel="stylesheet" type="text/css" />
     <link id="favicon" rel="icon" type="image/png" href="{{asset "images/favicon.png"}}" />
     <meta name="theme-color" content="#000000" />
+    <meta name="gorilla.csrf.Token" content="{{.csrfToken}}" />
     <script src="{{asset "index.js"}}"></script>
     <script src="{{asset "d3.v355.min.js"}}"></script>
     <script src="{{asset "graph.js"}}"></script>
@@ -17,8 +18,10 @@
 
     <script type="text/javascript">
       var node = document.getElementById("elm-app-embed");
+      var csrf = document.querySelector('meta[name="gorilla.csrf.Token"]');
       var app = Elm.Main.embed(node, {
-        turbulenceImgSrc: {{asset "images/buckleup.svg"}}
+        turbulenceImgSrc: {{asset "images/buckleup.svg"}},
+        csrfToken: csrf ? csrf.content : ''
       });
 
       app.ports.renderPipeline.subscribe(function (values) {

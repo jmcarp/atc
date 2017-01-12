@@ -45,6 +45,7 @@ type alias Flags =
   , pipelineName : String
   , turbulenceImgSrc : String
   , route : Routes.ConcourseRoute
+  , csrfToken : String
   }
 
 type Msg

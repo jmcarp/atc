@@ -17,7 +17,7 @@ order teamName pipelineNames =
     post =
       Http.send Http.defaultSettings
         { verb = "PUT"
-        , headers = []
+        , headers = [ Http.header "X-CSRF-Token" flags.csrfToken ]
         , url = "/api/v1/teams/" ++ teamName ++ "/pipelines/ordering"
         , body = Http.string body
         }

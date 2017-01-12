@@ -5,9 +5,12 @@ import (
 	"net/http"
 
 	"code.cloudfoundry.org/lager"
+	"github.com/gorilla/csrf"
 )
 
-type templateData struct{}
+type templateData struct {
+	csrfToken string
+}
 
 type handler struct {
 	logger   lager.Logger
@@ -42,7 +45,7 @@ func NewHandler(logger lager.Logger) (http.Handler, error) {
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log := h.logger.Session("index")
 
-	err := h.template.Execute(w, templateData{})
+	err := h.template.Execute(w, templateData{csrf.Token(r)})
 	if err != nil {
 		log.Fatal("failed-to-build-template", err, lager.Data{})
 		w.WriteHeader(http.StatusInternalServerError)

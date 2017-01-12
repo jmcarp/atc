@@ -46,6 +46,7 @@ import (
 	"github.com/concourse/atc/wrappa"
 	"github.com/concourse/retryhttp"
 	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/gorilla/csrf"
 	multierror "github.com/hashicorp/go-multierror"
 	"github.com/jackc/pgx"
 	"github.com/lib/pq"
@@ -119,6 +120,13 @@ type ATCCommand struct {
 	} `group:"Metrics & Diagnostics"`
 
 	LogDBQueries bool `long:"log-db-queries" description:"Log database queries."`
+
+	CSRF struct {
+		Disable           bool   `long:"disable-csrf-protection" description:"Disable CSRF protection"`
+		DisableSecure     bool   `long:"disable-csrf-secure" description:"Disable Secure flag on CSRF cookie"`
+		DisableHttpOnly   bool   `long:"disable-csrf-http-only" description:"Disable HttpOnly flag on CSRF cookie"`
+		AuthenticationKey string `long:"csrf-auth-key" description:"CSRF Authentication Key"`
+	} `group:"CSRF"`
 }
 
 func (cmd *ATCCommand) Execute(args []string) error {
@@ -256,6 +264,22 @@ func (cmd *ATCCommand) Runner(args []string) (ifrit.Runner, error) {
 		return nil, err
 	}
 
+	var protector func(http.Handler) http.Handler
+	if cmd.CSRF.Disable {
+		protector = func(handler http.Handler) http.Handler {
+			return handler
+		}
+	} else {
+		protector = func(handler http.Handler) http.Handler {
+			p := csrf.Protect(
+				[]byte(cmd.CSRF.AuthenticationKey),
+				csrf.Secure(!cmd.CSRF.DisableSecure),
+				csrf.HttpOnly(!cmd.CSRF.DisableHttpOnly),
+			)
+			return auth.CookieCSRFMiddleware(p(handler))
+		}
+	}
+
 	var httpHandler, httpsHandler http.Handler
 	if cmd.TLSBindPort != 0 {
 		httpHandler = cmd.constructHTTPHandler(
@@ -281,6 +305,8 @@ func (cmd *ATCCommand) Runner(args []string) (ifrit.Runner, error) {
 				externalHost: cmd.ExternalURL.URL().Host,
 				baseHandler:  oauthHandler,
 			},
+
+			protector,
 		)
 
 		httpsHandler = cmd.constructHTTPHandler(
@@ -288,6 +314,7 @@ func (cmd *ATCCommand) Runner(args []string) (ifrit.Runner, error) {
 			publicHandler,
 			apiHandler,
 			oauthHandler,
+			protector,
 		)
 	} else {
 		httpHandler = cmd.constructHTTPHandler(
@@ -295,6 +322,7 @@ func (cmd *ATCCommand) Runner(args []string) (ifrit.Runner, error) {
 			publicHandler,
 			apiHandler,
 			oauthHandler,
+			protector,
 		)
 	}
 
@@ -537,6 +565,15 @@ func (cmd *ATCCommand) validate() error {
 			errs,
 			errors.New("must specify --tls-bind-port, --tls-cert, --tls-key to use TLS"),
 		)
+	}
+
+	if !cmd.CSRF.Disable {
+		if cmd.CSRF.AuthenticationKey == "" {
+			errs = multierror.Append(
+				errs,
+				errors.New("must specify --csrf-authentication-key to use csrf protection"),
+			)
+		}
 	}
 
 	return errs.ErrorOrNil()
@@ -811,6 +848,7 @@ func (cmd *ATCCommand) constructHTTPHandler(
 	publicHandler http.Handler,
 	apiHandler http.Handler,
 	oauthHandler http.Handler,
+	protector func(http.Handler) http.Handler,
 ) http.Handler {
 	webMux := http.NewServeMux()
 	webMux.Handle("/api/v1/", apiHandler)
@@ -819,13 +857,9 @@ func (cmd *ATCCommand) constructHTTPHandler(
 	webMux.Handle("/robots.txt", robotstxt.Handler{})
 	webMux.Handle("/", webHandler)
 
-	// proxy Authorization header to/from auth cookie,
-	// to support auth from JS (EventSource) and custom JWT auth
-	httpHandler := auth.CookieSetHandler{
-		Handler: webMux,
+	return auth.CookieSetHandler{
+		Handler: protector(webMux),
 	}
-
-	return httpHandler
 }
 
 func (cmd *ATCCommand) constructAPIHandler(
