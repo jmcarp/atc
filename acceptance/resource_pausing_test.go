@@ -107,6 +107,7 @@ var _ = Describe("Resource Pausing", func() {
 		It("can view the resource", func() {
 			// homepage -> resource detail
 			Login(page, homepage())
+			page.Refresh()
 
 			Expect(page.Navigate(homepage())).To(Succeed())
 			Eventually(page.FindByLink("resource-name")).Should(BeFound())
