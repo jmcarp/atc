@@ -98,6 +98,13 @@ type ATCCommand struct {
 		ResourceTypes   map[string]string `long:"resource"         description:"A resource type to advertise for the worker. Can be specified multiple times." value-name:"TYPE:IMAGE"`
 	} `group:"Static Worker (optional)" namespace:"worker"`
 
+	CSRF struct {
+		Disable               bool   `long:"disable-csrf-protection" description:"Disable CSRF protection"`
+		DisableSecureCookie   bool   `long:"disable-csrf-secure-cookie" description:"Disable Secure flag on CSRF cookie"`
+		DisableHttpOnlyCookie bool   `long:"disable-csrf-http-only-cookie" description:"Disable HttpOnly flag on CSRF cookie"`
+		AuthenticationKey     string `long:"csrf-auth-key" description:"CSRF Authentication Key"`
+	} `group:"CSRF"`
+
 	BasicAuth atc.BasicAuthFlag `group:"Basic Authentication" namespace:"basic-auth"`
 
 	GitHubAuth atc.GitHubAuthFlag `group:"GitHub Authentication" namespace:"github-auth"`
@@ -120,13 +127,6 @@ type ATCCommand struct {
 	} `group:"Metrics & Diagnostics"`
 
 	LogDBQueries bool `long:"log-db-queries" description:"Log database queries."`
-
-	CSRF struct {
-		Disable           bool   `long:"disable-csrf-protection" description:"Disable CSRF protection"`
-		DisableSecure     bool   `long:"disable-csrf-secure" description:"Disable Secure flag on CSRF cookie"`
-		DisableHttpOnly   bool   `long:"disable-csrf-http-only" description:"Disable HttpOnly flag on CSRF cookie"`
-		AuthenticationKey string `long:"csrf-auth-key" description:"CSRF Authentication Key"`
-	} `group:"CSRF"`
 }
 
 func (cmd *ATCCommand) Execute(args []string) error {
@@ -273,8 +273,8 @@ func (cmd *ATCCommand) Runner(args []string) (ifrit.Runner, error) {
 		protector = func(handler http.Handler) http.Handler {
 			p := csrf.Protect(
 				[]byte(cmd.CSRF.AuthenticationKey),
-				csrf.Secure(!cmd.CSRF.DisableSecure),
-				csrf.HttpOnly(!cmd.CSRF.DisableHttpOnly),
+				csrf.Secure(!cmd.CSRF.DisableSecureCookie),
+				csrf.HttpOnly(!cmd.CSRF.DisableHttpOnlyCookie),
 			)
 			return auth.CookieCSRFMiddleware(p(handler))
 		}
