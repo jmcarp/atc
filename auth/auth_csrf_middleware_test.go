@@ -2,7 +2,6 @@ package auth_test
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 
@@ -13,7 +12,7 @@ import (
 	"github.com/concourse/atc/auth"
 )
 
-var _ = Describe("CookieCSRFMiddleware", func() {
+var _ = Describe("AuthCSRFMiddleware", func() {
 	simpleHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if auth := r.Header.Get("Authorization"); auth != "" {
 			fmt.Fprintf(w, "auth: %s", auth)
@@ -24,7 +23,7 @@ var _ = Describe("CookieCSRFMiddleware", func() {
 
 	BeforeEach(func() {
 		protector := csrf.Protect([]byte("shh"))
-		server = httptest.NewServer(auth.CookieCSRFMiddleware(protector(simpleHandler)))
+		server = httptest.NewServer(auth.AuthCSRFMiddleware(protector(simpleHandler)))
 	})
 
 	AfterEach(func() {
@@ -47,26 +46,17 @@ var _ = Describe("CookieCSRFMiddleware", func() {
 			Expect(err).NotTo(HaveOccurred())
 		})
 
-		It("proxies to the handler without setting the Authorization header", func() {
-			responseBody, err := ioutil.ReadAll(response.Body)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(string(responseBody)).To(Equal(""))
-		})
+		Context("with the authorization header", func() {
+			BeforeEach(func() {
+				request.Header.Set("Authorization", "Bearer: token")
+			})
 
-		Context("without the ATC-Authorization cookie", func() {
 			It("returns 200", func() {
 				Expect(response.StatusCode).To(Equal(http.StatusOK))
 			})
 		})
 
-		Context("with the ATC-Authorization cookie", func() {
-			BeforeEach(func() {
-				request.AddCookie(&http.Cookie{
-					Name:  auth.CookieName,
-					Value: header("username", "password"),
-				})
-			})
-
+		Context("without the authorization header", func() {
 			It("returns 403", func() {
 				Expect(response.StatusCode).To(Equal(http.StatusForbidden))
 			})

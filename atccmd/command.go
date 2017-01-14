@@ -277,7 +277,7 @@ func (cmd *ATCCommand) Runner(args []string) (ifrit.Runner, error) {
 				csrf.HttpOnly(!cmd.CSRF.DisableHttpOnlyCookie),
 				csrf.Path("/"),
 			)
-			return auth.CookieCSRFMiddleware(p(handler))
+			return auth.AuthCSRFMiddleware(p(handler))
 		}
 	}
 
