@@ -19,25 +19,13 @@ type ResourceGet struct {
 }
 
 func (r ResourceGet) Get(logger lager.Logger, worker *cessna.Worker) (baggageclaim.Volume, error) {
-	parentVolume, err := r.ResourceType.RootFSVolumeFor(logger, worker)
-	if err != nil {
-		return nil, err
-	}
-
-	// COW of RootFS Volume
-	spec := baggageclaim.VolumeSpec{
-		Strategy: baggageclaim.COWStrategy{
-			Parent: parentVolume,
-		},
-		Privileged: false,
-	}
-	rootFSVolume, err := worker.BaggageClaimClient().CreateVolume(logger, spec)
+	rootFSPath, err := r.ResourceType.RootFSPathFor(logger, worker)
 	if err != nil {
 		return nil, err
 	}
 
 	// Empty Volume for Get
-	spec = baggageclaim.VolumeSpec{
+	spec := baggageclaim.VolumeSpec{
 		Strategy:   baggageclaim.EmptyStrategy{},
 		Privileged: false,
 	}
@@ -58,7 +46,7 @@ func (r ResourceGet) Get(logger lager.Logger, worker *cessna.Worker) (baggagecla
 
 	gardenSpec := garden.ContainerSpec{
 		Privileged: false,
-		RootFSPath: rootFSVolume.Path(),
+		RootFSPath: rootFSPath,
 		BindMounts: bindMounts,
 	}
 
@@ -81,6 +69,28 @@ func (r ResourceGet) Get(logger lager.Logger, worker *cessna.Worker) (baggagecla
 	}
 
 	return volumeForGet, nil
+}
+
+func (r ResourceGet) RootFSPathFor(logger lager.Logger, worker *cessna.Worker) (string, error) {
+	v, err := r.Get(logger, worker)
+	if err != nil {
+		return "", err
+	}
+
+	// COW of RootFS Volume
+	spec := baggageclaim.VolumeSpec{
+		Strategy: baggageclaim.COWStrategy{
+			Parent: v,
+		},
+		Privileged: false,
+	}
+
+	rootFSVolume, err := worker.BaggageClaimClient().CreateVolume(logger, spec)
+	if err != nil {
+		return "", err
+	}
+
+	return rootFSVolume.Path(), nil
 }
 
 func (r ResourceGet) newGetCommandProcess(container garden.Container, mountPath string) (*getCommandProcess, error) {

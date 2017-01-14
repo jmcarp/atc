@@ -16,12 +16,52 @@ import (
 
 var _ = Describe("Check for new versions of resources", func() {
 
-	var checkVersions []atc.Version
-	var checkErr error
+	var (
+		checkVersions []atc.Version
+		checkErr      error
+	)
 
 	Context("whose type is a base resource type", func() {
 
 		BeforeEach(func() {
+			var (
+				check string
+				in    string
+				out   string
+			)
+
+			check = `#!/bin/bash
+			set -e
+			TMPDIR=${TMPDIR:-/tmp}
+
+			exec 3>&1 # make stdout available as fd 3 for the result
+			exec 1>&2 # redirect all output to stderr for logging
+
+			mkdir /opt/resource/logs
+			logs=/opt/resource/logs/check.log
+			touch $logs
+
+			payload=$TMPDIR/echo-request
+			cat > $payload <&0
+
+			versions=$(jq -r '.source.versions // ""' < $payload)
+			echo $versions >> $logs
+			echo $versions >&3
+			`
+
+			c := NewResourceContainer(check, in, out)
+
+			r, err := c.RootFSify()
+			Expect(err).NotTo(HaveOccurred())
+
+			rootFSPath, err := createBaseResourceVolume(r)
+			Expect(err).ToNot(HaveOccurred())
+
+			baseResourceType = BaseResourceType{
+				RootFSPath: rootFSPath,
+				Name:       "echo",
+			}
+
 			source := atc.Source{
 				"versions": []map[string]string{
 					{"ref": "123"},
@@ -74,4 +114,73 @@ var _ = Describe("Check for new versions of resources", func() {
 
 	})
 
+	Context("whose type is a custom resource type", func() {
+		var (
+			quineCheck string
+			quineIn    string
+			quineOut   string
+
+			resourceCheck ResourceCheck
+		)
+
+		BeforeEach(func() {
+			quineCheck = `#!/bin/bash
+			set -e
+			TMPDIR=${TMPDIR:-/tmp}
+
+			exec 3>&1 # make stdout available as fd 3 for the result
+			exec 1>&2 # redirect all output to stderr for logging
+
+			payload=$TMPDIR/echo-request
+			cat > $payload <&0
+
+			versions=$(jq -r '.source.versions // ""' < $payload)
+			echo $versions >&3
+			`
+
+			quineIn = `#!/bin/bash
+
+			cp -a / $1/ || true
+			`
+
+			c := NewResourceContainer(quineCheck, quineIn, quineOut)
+
+			r, err := c.RootFSify()
+			Expect(err).NotTo(HaveOccurred())
+
+			rootFSPath, err := createBaseResourceVolume(r)
+			Expect(err).ToNot(HaveOccurred())
+
+			quineResourceType := BaseResourceType{
+				RootFSPath: rootFSPath,
+				Name:       "quine",
+			}
+
+			resourceCheck = ResourceCheck{
+				Resource: Resource{
+					ResourceType: ResourceGet{
+						Resource: Resource{
+							ResourceType: quineResourceType,
+							Source:       atc.Source{},
+						},
+						Version: atc.Version{
+							"beep": "boop",
+						},
+					},
+					Source: atc.Source{
+						"versions": []atc.Version{
+							{"abc": "123"},
+						},
+					},
+				},
+			}
+		})
+
+		It("works", func() {
+			checkResponse, checkErr := resourceCheck.Check(logger, testWorker)
+			Expect(checkErr).NotTo(HaveOccurred())
+
+			Expect(checkResponse).To(ContainElement(atc.Version{"abc": "123"}))
+		})
+	})
 })

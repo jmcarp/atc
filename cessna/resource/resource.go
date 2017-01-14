@@ -13,12 +13,13 @@ type BaseResourceType struct {
 }
 
 type Resource struct {
-	ResourceType ResourceType
+	ResourceType RootFSable
 	Source       atc.Source
 }
 
-type ResourceType interface {
-	RootFSVolumeFor(logger lager.Logger, worker *cessna.Worker) (baggageclaim.Volume, error)
+//go:generate counterfeiter . RootFSable
+type RootFSable interface {
+	RootFSPathFor(logger lager.Logger, worker *cessna.Worker) (string, error)
 }
 
 func NewBaseResource(resourceType BaseResourceType, source atc.Source) Resource {
@@ -28,7 +29,7 @@ func NewBaseResource(resourceType BaseResourceType, source atc.Source) Resource 
 	}
 }
 
-func (r BaseResourceType) RootFSVolumeFor(logger lager.Logger, worker *cessna.Worker) (baggageclaim.Volume, error) {
+func (r BaseResourceType) RootFSPathFor(logger lager.Logger, worker *cessna.Worker) (string, error) {
 	spec := baggageclaim.VolumeSpec{
 		Strategy: baggageclaim.ImportStrategy{
 			Path: r.RootFSPath,
@@ -36,7 +37,24 @@ func (r BaseResourceType) RootFSVolumeFor(logger lager.Logger, worker *cessna.Wo
 		Privileged: true,
 	}
 
-	return worker.BaggageClaimClient().CreateVolume(logger.Session("create-base-resource-type-rootfs-volume"), spec)
+	parentVolume, err := worker.BaggageClaimClient().CreateVolume(logger, spec)
+	if err != nil {
+		return "", err
+	}
+
+	// COW of RootFS Volume
+	s := baggageclaim.VolumeSpec{
+		Strategy: baggageclaim.COWStrategy{
+			Parent: parentVolume,
+		},
+		Privileged: false,
+	}
+
+	v, err := worker.BaggageClaimClient().CreateVolume(logger, s)
+	if err != nil {
+		return "", err
+	}
+	return v.Path(), nil
 }
 
 type CheckRequest struct {
