@@ -194,7 +194,6 @@ func (a *ATCCommand) getATCCommand() *exec.Cmd {
 		"--postgres-data-source", a.postgresDataSourceName,
 		"--external-url", fmt.Sprintf("http://127.0.0.1:%d", a.port),
 		"--session-signing-key", a.pemPrivateKeyFile,
-		"--csrf-auth-key", "super-secret-key",
 		"--disable-csrf-secure-cookie",
 	}
 

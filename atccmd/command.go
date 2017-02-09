@@ -204,6 +204,15 @@ func (cmd *ATCCommand) Runner(args []string) (ifrit.Runner, error) {
 		return nil, err
 	}
 
+	if !cmd.CSRF.Disable && cmd.CSRF.AuthenticationKey == "" {
+		dbKeyFactory := dbng.NewKeyFactory(dbngConn)
+		key, err := dbKeyFactory.GetOrCreateKey()
+		if err != nil {
+			return nil, err
+		}
+		cmd.CSRF.AuthenticationKey = key
+	}
+
 	providerFactory := provider.NewOAuthFactory(
 		logger.Session("oauth-provider-factory"),
 		cmd.oauthBaseURL(),
@@ -562,15 +571,6 @@ func (cmd *ATCCommand) validate() error {
 			errs,
 			errors.New("must specify --tls-bind-port, --tls-cert, --tls-key to use TLS"),
 		)
-	}
-
-	if !cmd.CSRF.Disable {
-		if cmd.CSRF.AuthenticationKey == "" {
-			errs = multierror.Append(
-				errs,
-				errors.New("must specify --csrf-authentication-key to use csrf protection"),
-			)
-		}
 	}
 
 	return errs.ErrorOrNil()
