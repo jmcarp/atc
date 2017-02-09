@@ -204,13 +204,20 @@ func (cmd *ATCCommand) Runner(args []string) (ifrit.Runner, error) {
 		return nil, err
 	}
 
-	if !cmd.CSRF.Disable && cmd.CSRF.AuthenticationKey == "" {
+	if !cmd.CSRF.Disable {
 		dbKeyFactory := dbng.NewKeyFactory(dbngConn)
-		key, err := dbKeyFactory.GetOrCreateKey()
-		if err != nil {
-			return nil, err
+		if cmd.CSRF.AuthenticationKey == "" {
+			key, err := dbKeyFactory.GetOrCreateKey()
+			if err != nil {
+				return nil, err
+			}
+			cmd.CSRF.AuthenticationKey = key
+		} else {
+			err = dbKeyFactory.SetKey(cmd.CSRF.AuthenticationKey)
+			if err != nil {
+				return nil, err
+			}
 		}
-		cmd.CSRF.AuthenticationKey = key
 	}
 
 	providerFactory := provider.NewOAuthFactory(
