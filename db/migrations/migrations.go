@@ -1,6 +1,6 @@
 package migrations
 
-import "github.com/BurntSushi/migration"
+import "github.com/concourse/atc/dbng/migration"
 
 var Migrations = []migration.Migrator{
 	InitialSchema,
@@ -133,4 +133,5 @@ var Migrations = []migration.Migrator{
 	AddRetiringWorkerState,
 	AddRunningWorkerMustHaveAddrConstraint,
 	AddInterruptibleToJob,
+	AddLandedWorkerCannotHaveAddrConstraint,
 }

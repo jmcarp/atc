@@ -4,8 +4,8 @@ import (
 	"archive/tar"
 	"io/ioutil"
 
-	. "github.com/concourse/atc/cessna/resource"
-	"github.com/concourse/atc/cessna/resource/resourcefakes"
+	. "github.com/concourse/atc/cessna"
+	"github.com/concourse/atc/cessna/cessnafakes"
 	"github.com/concourse/baggageclaim"
 	"github.com/concourse/go-archive/archivetest"
 	. "github.com/onsi/ginkgo"
@@ -14,16 +14,16 @@ import (
 
 var _ = Describe("Running a task", func() {
 	It("it mounts the inputs as COWs and the outputs directly", func() {
-		rootFSgenerator := new(resourcefakes.FakeRootFSable)
+		rootFSgenerator := new(cessnafakes.FakeRootFSable)
 
 		rootFSgenerator.RootFSPathForReturns("docker:///alpine", nil)
 
-		inputVolume, err := testWorker.BaggageClaimClient().CreateVolume(logger, baggageclaim.VolumeSpec{
+		inputVolume, err := worker.BaggageClaimClient().CreateVolume(logger, baggageclaim.VolumeSpec{
 			Strategy: baggageclaim.EmptyStrategy{},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		outputVolume, err := testWorker.BaggageClaimClient().CreateVolume(logger, baggageclaim.VolumeSpec{
+		outputVolume, err := worker.BaggageClaimClient().CreateVolume(logger, baggageclaim.VolumeSpec{
 			Strategy: baggageclaim.EmptyStrategy{},
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -57,7 +57,7 @@ var _ = Describe("Running a task", func() {
 			},
 		}
 
-		err = task.Run(logger, testWorker, inputArtifacts, outputArtifacts)
+		err = task.Run(logger, worker, inputArtifacts, outputArtifacts)
 		Expect(err).NotTo(HaveOccurred())
 
 		file, err := outputVolume.StreamOut("otherfile")

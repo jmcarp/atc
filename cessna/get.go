@@ -1,15 +1,16 @@
-package resource
+package cessna
 
 import (
 	"bytes"
 	"encoding/json"
 
+	"archive/tar"
 	"code.cloudfoundry.org/garden"
 	"code.cloudfoundry.org/lager"
 	"github.com/concourse/atc"
-	"github.com/concourse/atc/cessna"
 	"github.com/concourse/baggageclaim"
 	"github.com/tedsuo/ifrit"
+	"os"
 )
 
 type ResourceGet struct {
@@ -18,7 +19,7 @@ type ResourceGet struct {
 	Params  atc.Params
 }
 
-func (r ResourceGet) Get(logger lager.Logger, worker *cessna.Worker) (baggageclaim.Volume, error) {
+func (r ResourceGet) Get(logger lager.Logger, worker Worker) (baggageclaim.Volume, error) {
 	rootFSPath, err := r.ResourceType.RootFSPathFor(logger, worker)
 	if err != nil {
 		return nil, err
@@ -27,7 +28,7 @@ func (r ResourceGet) Get(logger lager.Logger, worker *cessna.Worker) (baggagecla
 	// Empty Volume for Get
 	spec := baggageclaim.VolumeSpec{
 		Strategy:   baggageclaim.EmptyStrategy{},
-		Privileged: false,
+		Privileged: true,
 	}
 	volumeForGet, err := worker.BaggageClaimClient().CreateVolume(logger, spec)
 	if err != nil {
@@ -45,7 +46,7 @@ func (r ResourceGet) Get(logger lager.Logger, worker *cessna.Worker) (baggagecla
 	bindMounts := []garden.BindMount{mount}
 
 	gardenSpec := garden.ContainerSpec{
-		Privileged: false,
+		Privileged: true,
 		RootFSPath: rootFSPath,
 		BindMounts: bindMounts,
 	}
@@ -55,6 +56,20 @@ func (r ResourceGet) Get(logger lager.Logger, worker *cessna.Worker) (baggagecla
 		logger.Error("failed-to-create-gardenContainer-in-garden", err)
 		return nil, err
 	}
+
+	// Stream fake tar into container to make sure directory exists
+	// stream into baseDirectory
+	emptyTar := new(bytes.Buffer)
+
+	err = tar.NewWriter(emptyTar).Close()
+	if err != nil {
+		return nil, err
+	}
+
+	err = container.StreamIn(garden.StreamInSpec{
+		Path:      mountPath,
+		TarStream: emptyTar,
+	})
 
 	runner, err := r.newGetCommandProcess(container, mountPath)
 	if err != nil {
@@ -71,7 +86,7 @@ func (r ResourceGet) Get(logger lager.Logger, worker *cessna.Worker) (baggagecla
 	return volumeForGet, nil
 }
 
-func (r ResourceGet) RootFSPathFor(logger lager.Logger, worker *cessna.Worker) (string, error) {
+func (r ResourceGet) RootFSPathFor(logger lager.Logger, worker Worker) (string, error) {
 	v, err := r.Get(logger, worker)
 	if err != nil {
 		return "", err
@@ -82,7 +97,7 @@ func (r ResourceGet) RootFSPathFor(logger lager.Logger, worker *cessna.Worker) (
 		Strategy: baggageclaim.COWStrategy{
 			Parent: v,
 		},
-		Privileged: false,
+		Privileged: true,
 	}
 
 	rootFSVolume, err := worker.BaggageClaimClient().CreateVolume(logger, spec)
@@ -90,11 +105,11 @@ func (r ResourceGet) RootFSPathFor(logger lager.Logger, worker *cessna.Worker) (
 		return "", err
 	}
 
-	return rootFSVolume.Path(), nil
+	return "raw://" + rootFSVolume.Path(), nil
 }
 
 func (r ResourceGet) newGetCommandProcess(container garden.Container, mountPath string) (*getCommandProcess, error) {
-	p := &cessna.ContainerProcess{
+	p := &ContainerProcess{
 		Container: container,
 		ProcessSpec: garden.ProcessSpec{
 			Path: "/opt/resource/in",
@@ -130,7 +145,7 @@ func (r ResourceGet) newGetCommandProcess(container garden.Container, mountPath 
 }
 
 type getCommandProcess struct {
-	*cessna.ContainerProcess
+	*ContainerProcess
 
 	out *bytes.Buffer
 	err *bytes.Buffer
@@ -145,4 +160,19 @@ func (g *getCommandProcess) Response() (InResponse, error) {
 	}
 
 	return r, nil
+}
+
+func (g *getCommandProcess) Run(signals <-chan os.Signal, ready chan<- struct{}) error {
+	err := g.ContainerProcess.Run(signals, ready)
+	if err != nil {
+		switch e := err.(type) {
+		case ErrScriptFailed:
+			e.Stderr = string(g.err.Bytes())
+			e.Stdout = string(g.out.Bytes())
+
+			err = e
+		}
+	}
+
+	return err
 }

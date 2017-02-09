@@ -5,7 +5,7 @@ import (
 	"io/ioutil"
 
 	"github.com/concourse/atc"
-	. "github.com/concourse/atc/cessna/resource"
+	. "github.com/concourse/atc/cessna"
 	"github.com/concourse/baggageclaim"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -74,7 +74,7 @@ var _ = Describe("Get version of a resource", func() {
 				Resource: testBaseResource,
 				Version:  atc.Version{"beep": "boop"},
 				Params:   nil,
-			}.Get(logger, testWorker)
+			}.Get(logger, worker)
 		})
 
 		It("runs the get script", func() {
@@ -107,6 +107,7 @@ var _ = Describe("Get version of a resource", func() {
 
 		BeforeEach(func() {
 			quineIn = `#!/bin/bash
+			set -eux
 
 			TMPDIR=${TMPDIR:-/tmp}
 
@@ -118,10 +119,11 @@ var _ = Describe("Get version of a resource", func() {
 
 			destination=$1
 
-			cp -a / $destination/ || true
+			curl ` + tarURL + ` | tar -x -C $destination
 
 			version=$(jq -r '.version // ""' < $payload)
 
+			cp -R /opt/resource $destination/opt/resource
 			echo $version > $destination/version
 			`
 			c := NewResourceContainer(quineCheck, quineIn, quineOut)
@@ -161,7 +163,7 @@ var _ = Describe("Get version of a resource", func() {
 		})
 
 		It("works", func() {
-			getVolume, getErr := resourceGet.Get(logger, testWorker)
+			getVolume, getErr := resourceGet.Get(logger, worker)
 			Expect(getErr).NotTo(HaveOccurred())
 
 			file, err := getVolume.StreamOut("/version")

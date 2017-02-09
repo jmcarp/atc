@@ -8,7 +8,7 @@ import (
 	gclient "code.cloudfoundry.org/garden/client"
 	"code.cloudfoundry.org/garden/client/connection"
 	"github.com/concourse/atc"
-	. "github.com/concourse/atc/cessna/resource"
+	. "github.com/concourse/atc/cessna"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
@@ -76,7 +76,7 @@ var _ = Describe("Check for new versions of resources", func() {
 			checkVersions, checkErr = ResourceCheck{
 				Resource: testBaseResource,
 				Version:  nil,
-			}.Check(logger, testWorker)
+			}.Check(logger, worker)
 		})
 
 		It("runs the check script", func() {
@@ -139,8 +139,11 @@ var _ = Describe("Check for new versions of resources", func() {
 			`
 
 			quineIn = `#!/bin/bash
+			destination=$1
 
-			cp -a / $1/ || true
+			curl ` + tarURL + ` | tar -x -C $destination
+
+			cp -R /opt/resource $destination/opt/resource
 			`
 
 			c := NewResourceContainer(quineCheck, quineIn, quineOut)
@@ -177,7 +180,7 @@ var _ = Describe("Check for new versions of resources", func() {
 		})
 
 		It("works", func() {
-			checkResponse, checkErr := resourceCheck.Check(logger, testWorker)
+			checkResponse, checkErr := resourceCheck.Check(logger, worker)
 			Expect(checkErr).NotTo(HaveOccurred())
 
 			Expect(checkResponse).To(ContainElement(atc.Version{"abc": "123"}))
